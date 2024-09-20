@@ -1,0 +1,12 @@
+﻿global using AwardManagementApp.Model;
+global using Microsoft.EntityFrameworkCore;
+global using AwardManagementApp.Repositories.Abstract;
+global using Microsoft.AspNetCore.Mvc;
+global using AwardManagementApp.Model.DTO;
+global using AwardManagementApp.Repositories.Implement;
+global using System.Data.SqlClient;
+global using AwardManagementApp.Repositories;
+global using AwardManagementApp.Abstract;
+global using Dapper;
+global using System.Data;
+global using Microsoft.Extensions.Caching.Memory;
