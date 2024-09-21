@@ -6,6 +6,6 @@
         public int Weeks { get; set; }
         public int Months { get; set; }
         public double Hours { get; set; }
-        public List<Award> Awards { get; set; } // Include awards here
+        public List<Award> Awards { get; set; } 
     }
 }

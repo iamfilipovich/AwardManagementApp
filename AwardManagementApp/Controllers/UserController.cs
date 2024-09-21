@@ -1,4 +1,6 @@
 ﻿
+using AwardManagementApp.Model;
+
 namespace AwardManagementApp.Controllers
 {
     [ApiController]
@@ -60,35 +62,6 @@ namespace AwardManagementApp.Controllers
             }
         }
 
-        [HttpGet("{personalNumber}/{date}")]
-        public async Task<IActionResult> GetUserAwardsByPersonalNumberAndDate(int personalNumber, DateTime date)
-        {
-            var user = await _userService.GetUserByPersonalNumber(personalNumber);
-
-            if (user == null)
-            {
-                return NotFound($"User with PersonalNumber: {personalNumber} not found.");
-            }
-
-            try
-            {
-                var totalAwards = await _awardService.GetTotalAwardsAmountByDateAsync(user.Id, date);
-
-                if (totalAwards > 0)
-                {
-                    return Ok(totalAwards);
-                }
-                else
-                {
-                    return Ok(new { Message = $"No awards found for User with PersonalNumber: {personalNumber} on Date: {date}", TotalAwards = totalAwards });
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "An error occurred while getting user awards.");
-                return StatusCode(500, "An internal server error occurred.");
-            }
-        }
         [HttpDelete("{personalNumber}")]
         public async Task<IActionResult> DeleteUser(int personalNumber)
         {
@@ -99,16 +72,16 @@ namespace AwardManagementApp.Controllers
                 if (deleted)
                 {
                     _logger.LogInformation("User with PersonalNumber {PersonalNumber} deleted.", personalNumber);
-                    return NoContent(); // Return 204 No Content
+                    return NoContent(); 
                 }
 
                 _logger.LogWarning("User with PersonalNumber {PersonalNumber} not found.", personalNumber);
-                return NotFound(); // Return 404 if user doesn't exist
+                return NotFound(); 
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "An error occurred while deleting the user with PersonalNumber {PersonalNumber}.", personalNumber);
-                return StatusCode(500, "An error occurred while deleting the user."); // Return 500 Internal Server Error
+                return StatusCode(500, "An error occurred while deleting the user.");
             }
         }
     }

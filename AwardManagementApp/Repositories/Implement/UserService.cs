@@ -86,7 +86,7 @@ namespace AwardManagementApp.Repositories.Implement
                 }
 
                 await _dbConnection.ExecuteAsync(
-                    "DELETE FROM UserAward WHERE UserId = @UserId",
+                    "DELETE FROM UserAwardHistory WHERE UserId = @UserId",
                     new { UserId = user.Id });
                 
                 var result = await _dbConnection.ExecuteAsync(

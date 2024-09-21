@@ -10,11 +10,13 @@ namespace AwardManagementApp.Repositories.Implement
     {
         private readonly IDbConnection _dbConnection;
         private readonly ILogger<AwardService> _logger;
+        private readonly IMemoryCache _cache;
 
-        public AwardService(IDbConnection dbConnection, ILogger<AwardService> logger)
+        public AwardService(IDbConnection dbConnection, ILogger<AwardService> logger, IMemoryCache memoryCache)
         {
             _dbConnection = dbConnection;
             _logger = logger;
+            _cache = memoryCache;
         }
 
         public async Task CreateAwardAsync(Award award)
@@ -69,63 +71,42 @@ namespace AwardManagementApp.Repositories.Implement
             return result;
         }
 
-        public async Task<int> GetTotalAwardsAmountByDateAsync(int userId, DateTime endDate)
+        public async Task<decimal> GetTotalAwardsAmountByDateAsync(int personalNumber, DateTime endDate)
         {
-            //    string query = @"
-            //        SELECT ISNULL(SUM(A.Amount), 0) 
-            //        FROM Awards A
-            //        JOIN Users U ON A.UserId = U.Id
-            //        WHERE A.UserId = @UserId 
-            //        AND DATEADD(DAY, 
-            //        CASE 
-            //            WHEN A.PeriodicType = 'Hourly' THEN 1
-            //            WHEN A.PeriodicType = 'Daily' THEN 5
-            //            WHEN A.PeriodicType = 'Weekly' THEN 10
-            //            WHEN A.PeriodicType = 'Monthly' THEN 100
-            //            ELSE 0
-            //        END, 
-            //    U.DateOfRegistration) <= @EndDate";
+            try
+            {
+                var cacheKey = $"UserAwards_{personalNumber}_{endDate:yyyyMMdd}";
 
-            //    _logger.LogInformation("Executing query: {Query} with parameters: UserId = {UserId}, EndDate = {EndDate}", query, userId, endDate);
+                if (_cache.TryGetValue(cacheKey, out decimal totalAmount))
+                {
+                    _logger.LogInformation("Total awards amount retrieved from cache for personal number: {PersonalNumber} on date: {EndDate}", personalNumber, endDate);
+                    return totalAmount;
+                }
 
-            //    var result = await _dbConnection.ExecuteScalarAsync<int>(query, new { UserId = userId, EndDate = endDate });
+                var userId = await _dbConnection.QueryFirstOrDefaultAsync<int>(
+                    "SELECT Id FROM Users WHERE PersonalNumber = @PersonalNumber", new { PersonalNumber = personalNumber });
 
-            //    _logger.LogInformation("Result: {Result}", result);
+                if (userId == 0)
+                {
+                    _logger.LogWarning("User not found for personal number: {PersonalNumber}", personalNumber);
+                    return 0; 
+                }
 
-            //    return result;
-            string query = @"
-        SELECT 
-            ISNULL(SUM(
-                CASE 
-                    WHEN A.PeriodicType = 'Hourly' THEN 
-                        -- Calculate total hours between registration and end date
-                        (DATEDIFF(HOUR, U.DateOfRegistration, @EndDate) + 1) * A.Amount
-                    WHEN A.PeriodicType = 'Daily' THEN 
-                        -- Calculate total days between registration and end date
-                        (DATEDIFF(DAY, U.DateOfRegistration, @EndDate) + 1) * A.Amount
-                    WHEN A.PeriodicType = 'Weekly' THEN 
-                        -- Calculate total weeks between registration and end date
-                        (DATEDIFF(WEEK, U.DateOfRegistration, @EndDate) + 1) * A.Amount
-                    WHEN A.PeriodicType = 'Monthly' THEN 
-                        -- Calculate total months between registration and end date
-                        (DATEDIFF(MONTH, U.DateOfRegistration, @EndDate) + 1) * A.Amount
-                    ELSE 0
-                END
-            ), 0) AS TotalAwardsAmount
-        FROM Awards A
-        JOIN UserAward UA ON A.Id = UA.AwardId
-        JOIN Users U ON UA.UserId = U.Id
-        WHERE U.Id = @UserId
-            AND U.DateOfRegistration <= @EndDate";
+                totalAmount = await _dbConnection.QueryFirstOrDefaultAsync<decimal>(
+                    "SELECT SUM(Amount) FROM UserAwardHistory WHERE UserId = @UserId AND AwardedAt <= @EndDate",
+                    new { UserId = userId, EndDate = endDate });
 
-            _logger.LogInformation("Executing query: {Query} with parameters: UserId = {UserId}, EndDate = {EndDate}", query, userId, endDate);
+                _cache.Set(cacheKey, totalAmount, TimeSpan.FromHours(1));
 
-            var result = await _dbConnection.ExecuteScalarAsync<int>(query, new { UserId = userId, EndDate = endDate });
+                _logger.LogInformation("Total awards amount calculated and cached for personal number: {PersonalNumber} on date: {EndDate}, Amount: {TotalAmount}", personalNumber, endDate, totalAmount);
 
-            _logger.LogInformation("Result: {Result}", result);
-
-            return result;
+                return totalAmount;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "An error occurred while retrieving awards for personal number: {PersonalNumber} on date: {EndDate}", personalNumber, endDate);
+                throw; 
+            }
         }
-
     }
 }

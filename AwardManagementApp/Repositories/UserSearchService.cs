@@ -27,25 +27,6 @@
 
             return userAwardTotals;
         }
-
-        public async Task<object> GetUserAwardsByPersonalNumberAndDateAsync(int personalNumber, DateTime date)
-        {
-            var user = await _userService.GetUserByPersonalNumber(personalNumber);
-
-            if (user == null)
-            {
-                return null; 
-            }
-
-            var totalAmount = await _awardService.GetTotalAwardsAmountByDateAsync(user.Id, date);
-
-            return new
-            {
-                FullName = $"{user.FirstName} {user.LastName}",
-                PersonalNumber = user.PersonalNumber,
-                Date = date.ToString("yyyy-MM-dd"),
-                TotalAwards = totalAmount
-            };
-        }
+        
     }
 }

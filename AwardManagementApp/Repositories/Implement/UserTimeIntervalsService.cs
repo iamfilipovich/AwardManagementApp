@@ -1,4 +1,6 @@
 ﻿
+using AwardManagementApp.Model;
+
 namespace AwardManagementApp.Repositories.Implement
 {
     public class UserTimeIntervalsService : IUserTimeIntervalsService
@@ -6,17 +8,21 @@ namespace AwardManagementApp.Repositories.Implement
         private readonly IDbConnection _dbConnection;
         private readonly IAwardService _awardService;
         private readonly ILogger<UserTimeIntervalsService> _logger;
+        private readonly IMemoryCache _cache;
 
-        public UserTimeIntervalsService(IDbConnection dbConnection, IAwardService awardService, ILogger<UserTimeIntervalsService> logger)
+        public UserTimeIntervalsService(IDbConnection dbConnection, IAwardService awardService, 
+                                        ILogger<UserTimeIntervalsService> logger, IMemoryCache memoryCache)
         {
             _dbConnection = dbConnection;
             _awardService = awardService;
             _logger = logger;
+            _cache = memoryCache;
         }
 
-        public async Task CalculateAndAssignAwardsAsync()
+        public async Task CalculateAndSaveAwardsAsync()
         {
             var users = await _dbConnection.QueryAsync<User>("SELECT * FROM Users");
+
             var awards = await _dbConnection.QueryAsync<Award>("SELECT * FROM Awards");
 
             foreach (var user in users)
@@ -33,49 +39,82 @@ namespace AwardManagementApp.Repositories.Implement
 
                 if (hourlyAward != null)
                 {
-                    await AssignAwardToUser(user.Id, hourlyAward.Id, (int)hoursSinceRegistration * hourlyAward.Amount);
+                    await SaveUserAwardHistoryAsync(user.Id, hourlyAward.Id, hoursSinceRegistration, "Hourly");
                 }
 
                 if (dailyAward != null)
                 {
-                    await AssignAwardToUser(user.Id, dailyAward.Id, daysSinceRegistration * dailyAward.Amount);
+                    await SaveUserAwardHistoryAsync(user.Id, dailyAward.Id, daysSinceRegistration, "Daily");
                 }
 
                 if (weeklyAward != null)
                 {
-                    await AssignAwardToUser(user.Id, weeklyAward.Id, weeksSinceRegistration * weeklyAward.Amount);
+                    await SaveUserAwardHistoryAsync(user.Id, weeklyAward.Id, weeksSinceRegistration, "Weekly");
                 }
 
                 if (monthlyAward != null)
                 {
-                    await AssignAwardToUser(user.Id, monthlyAward.Id, monthsSinceRegistration * monthlyAward.Amount);
+                    await SaveUserAwardHistoryAsync(user.Id, monthlyAward.Id, monthsSinceRegistration, "Monthly");
                 }
             }
         }
 
-        public async Task AssignAwardToUser(int userId, int awardId, decimal amount)
+        public async Task SaveUserAwardHistoryAsync(int userId, int awardId, double totalPeriodsSinceRegistration, string periodicType)
         {
-            var userAwardExists = await _dbConnection.QueryFirstOrDefaultAsync<int>(
-                "SELECT COUNT(1) FROM UserAward WHERE UserId = @UserId AND AwardId = @AwardId",
-                new { UserId = userId, AwardId = awardId });
+            var user = await _dbConnection.QueryFirstOrDefaultAsync<User>(
+                "SELECT * FROM Users WHERE Id = @UserId", new { UserId = userId });
 
-            if (userAwardExists > 0)
+            if (user == null)
             {
-                _logger.LogWarning("Award already assigned to user: UserId = {UserId}, AwardId = {AwardId}", userId, awardId);
+                _logger.LogWarning("User not found for UserId: {UserId}", userId);
                 return;
             }
 
-            await _dbConnection.ExecuteAsync(
-                "INSERT INTO UserAward (UserId, AwardId, Amount, AwardedAt) VALUES (@UserId, @AwardId, @Amount, @AwardedAt)",
-                new
-                {
-                    UserId = userId,
-                    AwardId = awardId,
-                    Amount = amount,
-                    AwardedAt = DateTime.UtcNow
-                });
+            var awardAmount = await _dbConnection.QueryFirstOrDefaultAsync<decimal>(
+                "SELECT Amount FROM Awards WHERE Id = @AwardId", new { AwardId = awardId });
 
-            _logger.LogInformation("Award assigned: UserId = {UserId}, AwardId = {AwardId}, Amount = {Amount}", userId, awardId, amount);
+            if (awardAmount == 0)
+            {
+                _logger.LogWarning("No award amount found for AwardId: {AwardId}", awardId);
+                return;
+            }
+
+            for (int i = 1; i <= totalPeriodsSinceRegistration; i++)
+            {
+                DateTime awardedAt;
+
+                switch (periodicType)
+                {
+                    case "Hourly":
+                        awardedAt = user.DateOfRegistration.AddHours(i);
+                        break;
+                    case "Daily":
+                        awardedAt = user.DateOfRegistration.AddDays(i);
+                        break;
+                    case "Weekly":
+                        awardedAt = user.DateOfRegistration.AddDays(i * 7);
+                        break;
+                    case "Monthly":
+                        awardedAt = user.DateOfRegistration.AddMonths(i);
+                        break;
+                    default:
+                        _logger.LogWarning("Invalid periodic type: {PeriodicType}", periodicType);
+                        return; 
+                }
+
+                
+                await _dbConnection.ExecuteAsync(
+                    "INSERT INTO UserAwardHistory (UserId, AwardId, AwardedAt, Amount) VALUES (@UserId, @AwardId, @AwardedAt, @Amount)",
+                    new
+                    {
+                        UserId = userId,
+                        AwardId = awardId,
+                        AwardedAt = awardedAt,
+                        Amount = awardAmount
+                    });
+
+                _logger.LogInformation("Award saved for UserId: {UserId}, AwardId: {AwardId}, Amount: {Amount}, AwardedAt: {AwardedAt}", userId, awardId, awardAmount, awardedAt);
+            }
         }
 
     }

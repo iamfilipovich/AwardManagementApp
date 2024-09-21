@@ -2,9 +2,7 @@
 {
     public interface IUserTimeIntervalsService
     {
-        //RADI
-        Task CalculateAndAssignAwardsAsync();
-        Task AssignAwardToUser(int userId, int awardId, decimal amount);
-
+        Task CalculateAndSaveAwardsAsync();
+        Task SaveUserAwardHistoryAsync(int userId, int awardId, double totalPeriodsSinceRegistration, string periodicType);
     }
 }
