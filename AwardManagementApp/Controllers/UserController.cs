@@ -1,6 +1,4 @@
 ﻿
-using AwardManagementApp.Model;
-
 namespace AwardManagementApp.Controllers
 {
     [ApiController]
@@ -67,12 +65,13 @@ namespace AwardManagementApp.Controllers
         {
             try
             {
+                _logger.LogInformation("Attempting to delete user with PersonalNumber {PersonalNumber}.", personalNumber);
                 var deleted = await _userService.DeleteUserAsync(personalNumber);
 
                 if (deleted)
                 {
                     _logger.LogInformation("User with PersonalNumber {PersonalNumber} deleted.", personalNumber);
-                    return NoContent(); 
+                    return Ok(new { message = $"User with PersonalNumber {personalNumber} deleted successfully." });
                 }
 
                 _logger.LogWarning("User with PersonalNumber {PersonalNumber} not found.", personalNumber);

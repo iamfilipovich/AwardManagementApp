@@ -17,8 +17,6 @@
 
             foreach (var user in users)
             {
-                var totalAmount = await _awardService.GetTotalAwardsAmountAsync(user.Id);
-
                 userAwardTotals.Add(new
                 {
                     FullName = $"{user.FirstName} {user.LastName}",

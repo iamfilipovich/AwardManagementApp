@@ -1,6 +1,4 @@
 ﻿
-using AwardManagementApp.Model;
-
 namespace AwardManagementApp.Repositories.Implement
 {
     public class UserTimeIntervalsService : IUserTimeIntervalsService
@@ -10,7 +8,7 @@ namespace AwardManagementApp.Repositories.Implement
         private readonly ILogger<UserTimeIntervalsService> _logger;
         private readonly IMemoryCache _cache;
 
-        public UserTimeIntervalsService(IDbConnection dbConnection, IAwardService awardService, 
+        public UserTimeIntervalsService(IDbConnection dbConnection, IAwardService awardService,
                                         ILogger<UserTimeIntervalsService> logger, IMemoryCache memoryCache)
         {
             _dbConnection = dbConnection;
@@ -62,7 +60,7 @@ namespace AwardManagementApp.Repositories.Implement
         public async Task SaveUserAwardHistoryAsync(int userId, int awardId, double totalPeriodsSinceRegistration, string periodicType)
         {
             var user = await _dbConnection.QueryFirstOrDefaultAsync<User>(
-                "SELECT * FROM Users WHERE Id = @UserId", new { UserId = userId });
+            "SELECT * FROM Users WHERE Id = @UserId", new { UserId = userId });
 
             if (user == null)
             {
@@ -78,6 +76,8 @@ namespace AwardManagementApp.Repositories.Implement
                 _logger.LogWarning("No award amount found for AwardId: {AwardId}", awardId);
                 return;
             }
+
+            var awardHistories = new List<UserAwardHistory>();
 
             for (int i = 1; i <= totalPeriodsSinceRegistration; i++)
             {
@@ -101,21 +101,32 @@ namespace AwardManagementApp.Repositories.Implement
                         _logger.LogWarning("Invalid periodic type: {PeriodicType}", periodicType);
                         return; 
                 }
-
+                var existingAward = await _dbConnection.QueryFirstOrDefaultAsync<UserAwardHistory>(
+                    "SELECT * FROM UserAwardHistory WHERE UserId = @UserId AND AwardId = @AwardId AND AwardedAt = @AwardedAt",
                 
-                await _dbConnection.ExecuteAsync(
-                    "INSERT INTO UserAwardHistory (UserId, AwardId, AwardedAt, Amount) VALUES (@UserId, @AwardId, @AwardedAt, @Amount)",
-                    new
-                    {
-                        UserId = userId,
-                        AwardId = awardId,
-                        AwardedAt = awardedAt,
-                        Amount = awardAmount
-                    });
+                new { UserId = userId, AwardId = awardId, AwardedAt = awardedAt });
 
-                _logger.LogInformation("Award saved for UserId: {UserId}, AwardId: {AwardId}, Amount: {Amount}, AwardedAt: {AwardedAt}", userId, awardId, awardAmount, awardedAt);
+                if (existingAward != null)
+                {
+                    _logger.LogInformation("Award already exists for UserId: {UserId}, AwardId: {AwardId}, AwardedAt: {AwardedAt}", userId, awardId, awardedAt);
+                    continue; 
+                }
+
+                awardHistories.Add(new UserAwardHistory
+                {
+                    UserId = userId,
+                    AwardId = awardId,
+                    AwardedAt = awardedAt,
+                    Amount = awardAmount
+                });
+
+                _logger.LogInformation("Prepared to save award for UserId: {UserId}, AwardId: {AwardId}, Amount: {Amount}, AwardedAt: {AwardedAt}", userId, awardId, awardAmount, awardedAt);
+            }
+
+            if (awardHistories.Any())
+            {
+                await _awardService.BulkInsertUserAwardHistory(awardHistories);
             }
         }
-
     }
 }

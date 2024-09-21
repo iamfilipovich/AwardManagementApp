@@ -1,9 +1,4 @@
-﻿using Dapper;
-using System.Data;
-using System.Threading.Tasks;
-using AwardManagementApp.Model;
-using Microsoft.Extensions.Logging;
-
+﻿
 namespace AwardManagementApp.Repositories.Implement
 {
     public class AwardService : IAwardService
@@ -60,17 +55,6 @@ namespace AwardManagementApp.Repositories.Implement
                 new { Name = name });
         }
 
-        public async Task<int> GetTotalAwardsAmountAsync(int userId)
-        {
-            var sql = @"
-            SELECT SUM(a.Amount) 
-            FROM Awards a
-            WHERE a.UserId = @UserId";
-
-            var result = await _dbConnection.ExecuteScalarAsync<int>(sql, new { UserId = userId });
-            return result;
-        }
-
         public async Task<decimal> GetTotalAwardsAmountByDateAsync(int personalNumber, DateTime endDate)
         {
             try
@@ -89,12 +73,12 @@ namespace AwardManagementApp.Repositories.Implement
                 if (userId == 0)
                 {
                     _logger.LogWarning("User not found for personal number: {PersonalNumber}", personalNumber);
-                    return 0; 
+                    return 0;
                 }
 
                 totalAmount = await _dbConnection.QueryFirstOrDefaultAsync<decimal>(
-                    "SELECT SUM(Amount) FROM UserAwardHistory WHERE UserId = @UserId AND AwardedAt <= @EndDate",
-                    new { UserId = userId, EndDate = endDate });
+                    "SELECT SUM(Amount) FROM UserAwardHistory WHERE UserId = @UserId AND CAST(AwardedAt AS DATE) = @EndDate",
+                    new { UserId = userId, EndDate = endDate.Date }); 
 
                 _cache.Set(cacheKey, totalAmount, TimeSpan.FromHours(1));
 
@@ -105,8 +89,50 @@ namespace AwardManagementApp.Repositories.Implement
             catch (Exception ex)
             {
                 _logger.LogError(ex, "An error occurred while retrieving awards for personal number: {PersonalNumber} on date: {EndDate}", personalNumber, endDate);
+                throw;
+            }
+        }
+    
+    public async Task BulkInsertUserAwardHistory(IEnumerable<UserAwardHistory> histories)
+        {
+            using var connection = new SqlConnection(_dbConnection.ConnectionString); 
+            await connection.OpenAsync();
+
+            using var transaction = await connection.BeginTransactionAsync();
+            try
+            {
+                using (var bulkCopy = new SqlBulkCopy(connection, SqlBulkCopyOptions.Default, (SqlTransaction)transaction))
+                {
+                    bulkCopy.DestinationTableName = "UserAwardHistory"; 
+
+                    bulkCopy.ColumnMappings.Add("UserId", "UserId");
+                    bulkCopy.ColumnMappings.Add("AwardId", "AwardId");
+                    bulkCopy.ColumnMappings.Add("AwardedAt", "AwardedAt");
+                    bulkCopy.ColumnMappings.Add("Amount", "Amount");
+
+                    var dataTable = new DataTable();
+                    dataTable.Columns.Add("UserId", typeof(int));
+                    dataTable.Columns.Add("AwardId", typeof(int));
+                    dataTable.Columns.Add("AwardedAt", typeof(DateTime));
+                    dataTable.Columns.Add("Amount", typeof(decimal));
+
+                    foreach (var history in histories)
+                    {
+                        dataTable.Rows.Add(history.UserId, history.AwardId, history.AwardedAt, history.Amount);
+                    }
+
+                    await bulkCopy.WriteToServerAsync(dataTable);
+                }
+
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "An error occurred while bulk inserting user award history.");
                 throw; 
             }
         }
+
     }
 }

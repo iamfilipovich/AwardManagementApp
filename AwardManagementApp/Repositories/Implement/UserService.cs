@@ -1,9 +1,4 @@
-﻿using Dapper;
-using System.Data;
-using System.Threading.Tasks;
-using AwardManagementApp.Model;
-using System.Collections.Generic;
-
+﻿
 namespace AwardManagementApp.Repositories.Implement
 {
     public class UserService : IUserService
